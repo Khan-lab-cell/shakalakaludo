@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
-import { useRoom, usePlayers } from '../hooks/useSupabase.js';
-import { getPlayerId, clearPlayer } from '../utils/session.js';
+import { useRoom, usePlayers, useHeartbeat, useFindMe } from '../hooks/useSupabase.js';
+import { getPlayerId, clearPlayer, setPlayerId } from '../utils/session.js';
 import { SEAT_COLORS } from '../game/boardPaths.js';
 
 const COLOR_CLASS = {
@@ -22,57 +22,44 @@ export default function Lobby() {
   const { code } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  // playerId comes from HomeScreen's navigate(..., { state }) and falls back
-  // to sessionStorage so a refresh of the lobby still knows who we are.
   const playerId = location.state?.playerId || getPlayerId();
 
   const { room, loading: roomLoading } = useRoom(code);
   const [players, setPlayers] = usePlayers(room?.id);
+  const { me: meDirect, loaded: meLoaded } = useFindMe(playerId);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [you, setYou] = useState(null);
-  const [resolving, setResolving] = useState(true);
+  const [rejoinBusy, setRejoinBusy] = useState(false);
 
-  // Find "you" in the players list as soon as both are available.
+  // Keep our own last_seen fresh so we don't show as "Disconnected" to
+  // ourselves while sitting in the lobby.
+  useHeartbeat(playerId);
+
+  // Merge the two sources of truth: prefer the direct query (most reliable),
+  // fall back to scanning the room-wide players list.
   useEffect(() => {
-    if (!room) return;
-    if (!playerId) { setResolving(false); return; }
+    if (meDirect) { setYou(meDirect); return; }
+    if (!playerId) return;
     const me = players.find((p) => p.id === playerId);
-    if (me) {
-      setYou(me);
-      setResolving(false);
-    } else {
-      setResolving(players.length > 0 || false);
-    }
-  }, [players, room, playerId]);
-
-  // If the room has loaded, players have loaded, and we still don't have
-  // "you", we were kicked or the player row was deleted.
-  useEffect(() => {
-    if (roomLoading) return;
-    if (resolving) return;
-    if (!playerId) {
-      setError('No player id found. Please create or join again from the home screen.');
-    } else if (players.length > 0 && !you) {
-      setError('You are not in this room. The host may have removed you.');
-    }
-  }, [roomLoading, resolving, playerId, players.length, you]);
-
-  // When the room transitions to 'playing', navigate to the game view.
-  // Explicit navigate is also done in handleStart as a belt-and-braces.
-  useEffect(() => {
-    if (room?.status === 'playing') {
-      navigate(`/game/${room.code}`, { state: { roomId: room.id, playerId } });
-    }
-  }, [room?.status, room?.code, room?.id, playerId, navigate]);
+    if (me) setYou(me);
+  }, [meDirect, players, playerId]);
 
   const isStale = (p) => {
+    if (!p) return false;
     if (p.is_bot) return false;
     if (p.disconnected) return true;
     if (!p.last_seen) return false;
     return (Date.now() - new Date(p.last_seen).getTime()) > 15000;
   };
+
+  // Auto-navigate to game when host starts it.
+  useEffect(() => {
+    if (room?.status === 'playing') {
+      navigate(`/game/${room.code}`, { state: { roomId: room.id, playerId } });
+    }
+  }, [room?.status, room?.code, room?.id, playerId, navigate]);
 
   const goHome = async () => {
     if (you?.id) {
@@ -82,14 +69,40 @@ export default function Lobby() {
     navigate('/');
   };
 
+  const handleRejoin = async () => {
+    if (!room) return;
+    setRejoinBusy(true);
+    setError(null);
+    const takenSeats = new Set(players.map((p) => p.seat));
+    let seat = 1;
+    while (takenSeats.has(seat)) seat += 1;
+    if (seat > 4) { setError('Room is full.'); setRejoinBusy(false); return; }
+    const name = you?.name || 'Player';
+    const { data: row, error: e } = await supabase
+      .from('players')
+      .insert({
+        room_id: room.id,
+        name,
+        color: SEAT_COLORS[seat - 1],
+        seat,
+        is_host: false,
+        is_bot: false,
+        session_token: `rejoin-${playerId}-${Date.now()}`,
+      })
+      .select()
+      .single();
+    if (e) { setError(e.message); setRejoinBusy(false); return; }
+    setPlayerId(row.id);
+    navigate(`/lobby/${room.code}`, { state: { roomId: room.id, playerId: row.id } });
+    setRejoinBusy(false);
+  };
+
   const handleStart = async () => {
     if (!room || !you?.is_host) return;
     if (players.length < 2) { setError('Need at least 2 players.'); return; }
     setBusy(true);
     setError(null);
 
-    // Use upsert keyed on room_id so re-starting a finished game (or
-    // recovering from a stuck room) doesn't trip the unique constraint.
     const { error: gsError } = await supabase
       .from('game_state')
       .upsert(
@@ -117,8 +130,6 @@ export default function Lobby() {
       .eq('id', room.id);
     if (re) { setError(re.message); setBusy(false); return; }
 
-    // Explicit navigate so the host is guaranteed to land in the game
-    // even if the realtime subscription doesn't fire in time.
     navigate(`/game/${room.code}`, { state: { roomId: room.id, playerId } });
   };
 
@@ -154,7 +165,7 @@ export default function Lobby() {
     await supabase.from('rooms').update({ settings: next }).eq('id', room.id);
   };
 
-  if (roomLoading || resolving) {
+  if (roomLoading || (playerId && !meLoaded)) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-500">Loading lobby…</div>
     );
@@ -168,12 +179,37 @@ export default function Lobby() {
     );
   }
 
+  // No playerId at all — user landed here without going through HomeScreen
+  if (!playerId) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-5">
+        <p className="text-slate-700 dark:text-slate-200 mb-2 font-semibold">No player session found.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Go back to home and create or join a room.</p>
+        <button onClick={() => navigate('/')} className="btn-primary">Back to home</button>
+      </div>
+    );
+  }
+
+  // playerId is set, but the row doesn't exist in the DB.
+  // Offer a Rejoin button so the user can self-heal.
   if (!you) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5">
         <p className="text-slate-700 dark:text-slate-200 mb-2 font-semibold">You are not in this room.</p>
-        {error && <p className="text-sm text-red-600 dark:text-red-400 mb-4">{error}</p>}
-        <button onClick={() => navigate('/')} className="btn-primary">Back to home</button>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          The host may have removed you, or the previous game ended.
+        </p>
+        {error && <p className="text-sm text-red-600 dark:text-red-400 mb-2">{error}</p>}
+        <div className="flex gap-2">
+          <button
+            onClick={handleRejoin}
+            disabled={rejoinBusy || players.length >= 4}
+            className="btn-primary"
+          >
+            {rejoinBusy ? 'Rejoining…' : 'Rejoin room'}
+          </button>
+          <button onClick={goHome} className="btn-secondary">Back to home</button>
+        </div>
       </div>
     );
   }

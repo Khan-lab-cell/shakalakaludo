@@ -183,6 +183,50 @@ export function useHeartbeat(playerId) {
   }, [playerId]);
 }
 
+// Find the local player by id with a direct query + per-row realtime
+// subscription. This is more reliable than scanning usePlayers() because
+// it doesn't depend on the room-wide load returning the right list.
+export function useFindMe(playerId) {
+  const [me, setMe] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!playerId) { setMe(null); setLoaded(false); return; }
+    let cancelled = false;
+
+    const load = async () => {
+      const { data, error: e } = await supabase
+        .from('players')
+        .select('*')
+        .eq('id', playerId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (e) console.error('useFindMe load', e);
+      setMe(data || null);
+      setLoaded(true);
+    };
+    load();
+
+    const channel = supabase
+      .channel(`me:${playerId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `id=eq.${playerId}` },
+        (payload) => {
+          if (cancelled) return;
+          if (payload.eventType === 'DELETE') setMe(null);
+          else setMe(payload.new);
+        })
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [playerId]);
+
+  return { me, loaded };
+}
+
 // Set up a Supabase Realtime broadcast channel for a room.
 export function useBroadcastChannel(channelName) {
   const channelRef = useRef(null);
