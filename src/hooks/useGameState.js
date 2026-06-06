@@ -16,7 +16,7 @@ import { chooseOption } from '../game/botAI.js';
 
 const TICK_MS = 1000;
 
-export function useGameState({ code, player }) {
+export function useGameState({ code, playerId }) {
   const { room, loading: roomLoading } = useRoom(code);
   const [players, setPlayers] = usePlayers(room?.id);
   const [gs, setGs] = useGameStateRow(room?.id);
@@ -32,15 +32,17 @@ export function useGameState({ code, player }) {
   // Heartbeat for the local player
   useHeartbeat(you?.id);
 
-  // Identify the local player row
+  // Identify the local player row by stable player.id (uuid from the
+  // players table). This is more reliable than session_token because the
+  // token is rotated on every new room entry.
   useEffect(() => {
-    if (!player?.sessionToken || !players.length) {
+    if (!playerId || !players.length) {
       setYou(null);
       return;
     }
-    const me = players.find((p) => p.session_token === player.sessionToken);
+    const me = players.find((p) => p.id === playerId);
     setYou(me || null);
-  }, [players, player?.sessionToken]);
+  }, [players, playerId]);
 
   // Local mirror of game state, seeded once from gs
   const localGsRef = useRef(gs);

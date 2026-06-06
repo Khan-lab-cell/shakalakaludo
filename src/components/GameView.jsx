@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabaseClient.js';
 import { useGameState } from '../hooks/useGameState.js';
-import { getName, getSessionToken } from '../utils/session.js';
+import { getPlayerId, clearPlayer } from '../utils/session.js';
 import { playSound } from '../lib/sounds.js';
 import Board from './Board.jsx';
 import Dice from './Dice.jsx';
@@ -16,9 +17,10 @@ import {
 
 function GameView() {
   const { code } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const player = useMemo(() => ({ name: getName(), sessionToken: getSessionToken() }), []);
-  const { room, gs, players, chat, you, winner, toast, isMyTurn, turnRemainingMs, turnTimer, actions } = useGameState({ code, player });
+  const playerId = location.state?.playerId || getPlayerId();
+  const { room, gs, players, chat, you, winner, toast, isMyTurn, turnRemainingMs, turnTimer, actions, roomLoading } = useGameState({ code, playerId });
 
   const [pendingOption, setPendingOption] = useState(null);
   const [pickedSlots, setPickedSlots] = useState([null, null]);
@@ -118,8 +120,17 @@ function GameView() {
   };
 
   useEffect(() => {
+    if (roomLoading) return;
     if (room === null) navigate('/');
-  }, [room, navigate]);
+  }, [roomLoading, room, navigate]);
+
+  const goHome = async () => {
+    if (you?.id) {
+      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) {}
+    }
+    clearPlayer();
+    navigate('/');
+  };
 
   if (!room || !gs) {
     return (
@@ -134,7 +145,7 @@ function GameView() {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
       <div className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center justify-between px-3 py-2">
-          <button onClick={() => navigate('/')} className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">← Home</button>
+          <button onClick={goHome} className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">← Leave</button>
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-wider text-slate-400">Code</span>
             <button
