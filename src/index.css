@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+  input {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 select-none;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700 shadow-md;
+  }
+  .btn-secondary {
+    @apply btn bg-slate-200 text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 shadow-md;
+  }
+  .card {
+    @apply bg-white dark:bg-slate-900 rounded-xl shadow-md border border-slate-200 dark:border-slate-800;
+  }
+  .input {
+    @apply w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500;
+  }
+}
+
+.safe-star::before {
+  content: '★';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  font-size: 0.85em;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.1);
+  pointer-events: none;
+}
+
+.dice-face {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.15);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 12%;
+}
+.dice-dot {
+  width: 22%;
+  height: 22%;
+  background: #1e293b;
+  border-radius: 50%;
+  align-self: center;
+  justify-self: center;
+}
+
+.perspective-600 { perspective: 600px; }
+.preserve-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; }
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.5); border-radius: 3px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
