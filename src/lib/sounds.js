@@ -27,7 +27,7 @@ function build(key) {
     });
     cache[key] = howl;
     return howl;
-  } catch (e) {
+  } catch {
     return { play: () => {}, stop: () => {}, unload: () => {} };
   }
 }
@@ -41,9 +41,9 @@ export function preloadSounds() {
 export function playSound(key) {
   if (!initialized) preloadSounds();
   const h = cache[key] || build(key);
-  try { h.stop(); h.play(); } catch (e) { /* ignore */ }
+  try { h.stop(); h.play(); } catch { /* ignore */ }
 }
 
 export function setMuted(muted) {
-  Object.values(cache).forEach((h) => { try { h.mute(muted); } catch (e) {} });
+  Object.values(cache).forEach((h) => { try { h.mute(muted); } catch { /* ignore */ } });
 }

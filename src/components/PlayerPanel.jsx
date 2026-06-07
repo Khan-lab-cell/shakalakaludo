@@ -6,9 +6,6 @@ const COLOR_BG = {
 const COLOR_RING = {
   red: 'ring-ludo-red', blue: 'ring-ludo-blue', green: 'ring-ludo-green', yellow: 'ring-ludo-yellow',
 };
-const COLOR_TEXT = {
-  red: 'text-ludo-red', blue: 'text-ludo-blue', green: 'text-ludo-green', yellow: 'text-ludo-yellow',
-};
 
 export default function PlayerPanel({ players, currentTurn, you, speakingIds = new Set(), turnRemainingMs, turnTimer }) {
   const all = ['red', 'blue', 'green', 'yellow'].map((color) => {

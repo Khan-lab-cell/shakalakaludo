@@ -2,15 +2,7 @@ import { useMemo } from 'react';
 import clsx from 'clsx';
 import { getValidOptions } from '../game/gameLogic.js';
 
-const COLOR_BG = {
-  red: 'bg-ludo-red', blue: 'bg-ludo-blue', green: 'bg-ludo-green', yellow: 'bg-ludo-yellow',
-};
-
-const COLOR_RING = {
-  red: 'ring-ludo-red', blue: 'ring-ludo-blue', green: 'ring-ludo-green', yellow: 'ring-ludo-yellow',
-};
-
-function OptionCard({ label, title, body, enabled, selected, onClick, diceColor, canPickPieces, pickedSlots, onPickPiece }) {
+function OptionCard({ label, title, body, enabled, selected, onClick, canPickPieces, pickedSlots, onPickPiece }) {
   return (
     <div
       className={clsx(

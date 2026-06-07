@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useRoom, usePlayers, useHeartbeat, useFindMe } from '../hooks/useSupabase.js';
 import { getPlayerId, clearPlayer, setPlayerId } from '../utils/session.js';
 import { SEAT_COLORS } from '../game/boardPaths.js';
+import { DISCONNECT_THRESHOLD_MS, TURN_TIMER_OPTIONS } from '../constants.js';
 
 const COLOR_CLASS = {
   red: 'bg-ludo-red',
@@ -25,7 +26,7 @@ export default function Lobby() {
   const playerId = location.state?.playerId || getPlayerId();
 
   const { room, loading: roomLoading } = useRoom(code);
-  const [players, setPlayers] = usePlayers(room?.id);
+  const [players] = usePlayers(room?.id);
   const { me: meDirect, loaded: meLoaded } = useFindMe(playerId);
 
   const [busy, setBusy] = useState(false);
@@ -51,7 +52,7 @@ export default function Lobby() {
     if (p.is_bot) return false;
     if (p.disconnected) return true;
     if (!p.last_seen) return false;
-    return (Date.now() - new Date(p.last_seen).getTime()) > 15000;
+    return (Date.now() - new Date(p.last_seen).getTime()) > DISCONNECT_THRESHOLD_MS;
   };
 
   // Auto-navigate to game when host starts it.
@@ -63,7 +64,7 @@ export default function Lobby() {
 
   const goHome = async () => {
     if (you?.id) {
-      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) {}
+      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) { console.error('goHome delete player', e); }
     }
     clearPlayer();
     navigate('/');
@@ -142,7 +143,7 @@ export default function Lobby() {
     while (taken.has(seat)) seat += 1;
     if (seat > 4) { setBusy(false); return; }
     const usedColor = SEAT_COLORS[seat - 1];
-    await supabase.from('players').insert({
+    const { error } = await supabase.from('players').insert({
       room_id: room.id,
       name: `Bot ${seat}`,
       color: usedColor,
@@ -151,18 +152,21 @@ export default function Lobby() {
       is_bot: true,
       session_token: `bot-${room.id}-${seat}-${Date.now()}`,
     });
+    if (error) console.error('handleAddBot', error);
     setBusy(false);
   };
 
   const handleKick = async (playerIdToKick) => {
     if (!you?.is_host) return;
-    await supabase.from('players').delete().eq('id', playerIdToKick);
+    const { error } = await supabase.from('players').delete().eq('id', playerIdToKick);
+    if (error) console.error('handleKick', error);
   };
 
   const updateSetting = async (patch) => {
     if (!room || !you?.is_host) return;
     const next = { ...(room.settings || {}), ...patch };
-    await supabase.from('rooms').update({ settings: next }).eq('id', room.id);
+    const { error } = await supabase.from('rooms').update({ settings: next }).eq('id', room.id);
+    if (error) console.error('updateSetting', error);
   };
 
   if (roomLoading || (playerId && !meLoaded)) {
@@ -285,7 +289,7 @@ export default function Lobby() {
           <div className="flex items-center gap-3">
             <span className="text-sm text-slate-600 dark:text-slate-300 w-32">Turn timer</span>
             <div className="flex gap-2">
-              {[30, 60].map((s) => (
+              {TURN_TIMER_OPTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => updateSetting({ turn_timer: s })}

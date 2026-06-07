@@ -1,8 +1,9 @@
 // Supabase data hooks: room + players + game state + chat.
 // Each hook subscribes to realtime and returns live data.
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { HEARTBEAT_INTERVAL_MS } from '../constants.js';
 
 // Fetch a single room by code. Subscribes to changes on that room.
 export function useRoom(code) {
@@ -178,7 +179,7 @@ export function useHeartbeat(playerId) {
         .then(() => {});
     };
     beat();
-    const t = setInterval(beat, 5000);
+    const t = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     return () => { aliveRef.current = false; clearInterval(t); };
   }, [playerId]);
 }

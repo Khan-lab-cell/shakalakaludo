@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useRoom, usePlayers, useGameStateRow, useChat, useHeartbeat } from './useSupabase.js';
 import { SEAT_COLORS } from '../game/boardPaths.js';
 import {
-  createInitialBoard, rollDice as rollDiceLogic, getValidOptions,
+  createInitialBoard, rollDice as rollDiceLogic,
   applyMoves, isDoubleSix, hasWon, nextTurn,
 } from '../game/gameLogic.js';
 import { chooseOption } from '../game/botAI.js';
@@ -18,9 +18,9 @@ const TICK_MS = 1000;
 
 export function useGameState({ code, playerId }) {
   const { room, loading: roomLoading } = useRoom(code);
-  const [players, setPlayers] = usePlayers(room?.id);
+  const [players] = usePlayers(room?.id);
   const [gs, setGs] = useGameStateRow(room?.id);
-  const [chat, setChat] = useChat(room?.id);
+  const [chat] = useChat(room?.id);
 
   const [you, setYou] = useState(null);
   const [selectedPiece, setSelectedPiece] = useState(null); // { color, slot }
@@ -135,7 +135,7 @@ export function useGameState({ code, playerId }) {
   // ------- Bot turn loop -------
   useEffect(() => {
     if (!gs || !players.length || winner) return;
-    if (gs.status !== 'playing') return;
+    if (room?.status !== 'playing') return;
     const currentPlayer = players.find((p) => p.color === gs.current_turn);
     if (!currentPlayer || !currentPlayer.is_bot) return;
 
@@ -166,10 +166,12 @@ export function useGameState({ code, playerId }) {
         await updatePlayer(currentPlayer.id, { turns_taken: (currentPlayer.turns_taken || 0) + 1 });
         return;
       }
-      const { board: newBoard, captured, finished } = applyMoves(state.board, currentPlayer.color, choice.moves);
+      const { board: newBoard, captured } = applyMoves(state.board, currentPlayer.color, choice.moves);
       // Stat updates
       const newKills = (currentPlayer.kills || 0) + captured.length;
-      const newPiecesHome = (currentPlayer.pieces_home || 0) + (finished ? 1 : 0);
+      const prevFinished = state.board[currentPlayer.color].filter((p) => p === 'finished').length;
+      const nextFinished = newBoard[currentPlayer.color].filter((p) => p === 'finished').length;
+      const newPiecesHome = (currentPlayer.pieces_home || 0) + (nextFinished - prevFinished);
       await updatePlayer(currentPlayer.id, { kills: newKills, pieces_home: newPiecesHome });
 
       const isDouble = isDoubleSix(dice);
@@ -178,7 +180,7 @@ export function useGameState({ code, playerId }) {
       await updateGameState({
         board: newBoard,
         current_turn: next,
-        dice_result: isDouble ? null : null, // clear dice either way; bonus turn gets a fresh roll
+        dice_result: null,
         move_phase: 'roll',
         turn_started: new Date().toISOString(),
         winner: finalWinner,
@@ -190,7 +192,7 @@ export function useGameState({ code, playerId }) {
     runBot();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs?.current_turn, gs?.move_phase, gs?.status, winner]);
+  }, [gs?.current_turn, gs?.move_phase, room?.status, winner, room?.id, players, you, updateGameState, updatePlayer]);
 
   // ------- Player actions -------
   const isMyTurn = you && gs && you.color === gs.current_turn && !you.is_bot;
@@ -206,12 +208,14 @@ export function useGameState({ code, playerId }) {
     if (!isMyTurn) return;
     if (gs.move_phase !== 'select') return;
     if (!moves || !moves.length) return;
-    const { board: newBoard, captured, finished } = applyMoves(gs.board, you.color, moves);
+    const { board: newBoard, captured } = applyMoves(gs.board, you.color, moves);
     if (!newBoard || newBoard === gs.board) return;
 
     // Update player stats
     const newKills = (you.kills || 0) + captured.length;
-    const newPiecesHome = (you.pieces_home || 0) + (finished ? 1 : 0);
+    const prevFinished = gs.board[you.color].filter((p) => p === 'finished').length;
+    const nextFinished = newBoard[you.color].filter((p) => p === 'finished').length;
+    const newPiecesHome = (you.pieces_home || 0) + (nextFinished - prevFinished);
     await updatePlayer(you.id, { kills: newKills, pieces_home: newPiecesHome, turns_taken: (you.turns_taken || 0) + 1 });
 
     const isDouble = isDoubleSix(gs.dice_result);
@@ -240,7 +244,7 @@ export function useGameState({ code, playerId }) {
     if (!room || !you?.is_host) return;
     if (players.length < 2) return;
     const firstTurn = SEAT_COLORS[0];
-    const { data: gsRow, error: gsError } = await supabase
+    const { error: gsError } = await supabase
       .from('game_state')
       .upsert({
         room_id: room.id,
@@ -301,7 +305,7 @@ export function useGameState({ code, playerId }) {
   // Mark this player disconnected (called on unmount of game view).
   const leaveRoom = useCallback(async () => {
     if (you?.id) {
-      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) {}
+      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) { console.error('leaveRoom', e); }
     }
   }, [you]);
 

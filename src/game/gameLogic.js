@@ -160,7 +160,6 @@ export const applyPieceMove = (board, color, slot, steps) => {
   }
 
   if (piece.type === 'main') {
-    const target = piece.index + steps;
     const newState = mainMoveResult(piece, steps, color);
     newBoard[color][slot] = newState;
     if (newState.type === 'homePath') enteredHome = true;
@@ -201,12 +200,6 @@ export const applyPieceMove = (board, color, slot, steps) => {
 // ------------------------------------------------------------------
 // Move options
 // ------------------------------------------------------------------
-
-// Can a piece be brought out of home? Requires a die showing 6.
-const canBringOut = (board, color, slot, dice) => {
-  if (board[color][slot] !== 'home') return false;
-  return dice.die1 === 6 || dice.die2 === 6;
-};
 
 // Collect all valid single-piece moves for a given number of steps.
 const collectSingleMoves = (board, color, steps) => {
@@ -296,7 +289,7 @@ export const getValidOptions = (board, color, dice) => {
 };
 
 // Resolve a chosen option to concrete piece(s) + steps to apply.
-export const resolveOption = (option, pickedSlots) => {
+export const resolveOption = (option) => {
   if (!option) return [];
   if (option.kind === 'single' || option.kind === 'bringOut') {
     return [{ slot: option.slot, steps: option.steps }];

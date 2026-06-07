@@ -2,7 +2,7 @@
 // All bots think for the same color (passed in by the caller), choosing among the
 // valid options returned by getValidOptions.
 
-import { COLORS, PATH_LENGTH, HOME_ENTRY, HOME_PATH, HOME_COLUMN_LENGTH, START } from './boardPaths.js';
+import { COLORS, PATH_LENGTH, HOME_ENTRY, HOME_COLUMN_LENGTH } from './boardPaths.js';
 import { applyMoves, getValidOptions, rollDice } from './gameLogic.js';
 
 const pieceProgress = (piece, color) => {
@@ -19,7 +19,7 @@ const pieceProgress = (piece, color) => {
 };
 
 // Pick the best single-piece move from a list of {slot, steps} candidates.
-const pickBestSingle = (board, color, candidates, dice) => {
+const pickBestSingle = (board, color, candidates) => {
   // Score each candidate; higher = better.
   let best = null;
   for (const cand of candidates) {
@@ -30,16 +30,13 @@ const pickBestSingle = (board, color, candidates, dice) => {
     if (after === board) continue; // invalid
 
     // 1) Capture: +100
-    const beforeCounts = countColorsOnMain(after, color, before);
-    // (The applyMoves already returns captured list; recompute via diff is heavier — approximate)
-    score += captureScore(board, after, color, cand.slot, cand.steps);
+    score += captureScore(board, after, color);
 
     // 2) Reaching home / final
     if (after[color][cand.slot] === 'finished') score += 80;
     if (after[color][cand.slot]?.type === 'homePath' && before?.type === 'main') score += 40;
 
     // 3) Advance furthest
-    const beforeProgress = pieceProgress(before, color);
     const afterProgress = pieceProgress(after[color][cand.slot], color);
     score += afterProgress * 2;
 
@@ -63,7 +60,7 @@ const isSafeMain = (i) => {
   return starts.includes(i) || stars.includes(i);
 };
 
-const captureScore = (before, after, color, slot, steps) => {
+const captureScore = (before, after, color) => {
   // Did any opponent piece go from on-board to home?
   for (const c of COLORS) {
     if (c === color) continue;
@@ -96,8 +93,6 @@ const vulnerabilityPenalty = (board, color, slot) => {
   }
   return penalty;
 };
-
-const countColorsOnMain = (board, color, piece) => 0; // placeholder, unused
 
 // Pick the best split option.
 const pickBestSplit = (board, color, candidates) => {
@@ -146,7 +141,7 @@ export const chooseOption = (board, color, dice) => {
     if (!o.moves.length) continue;
     const pick = o.type === 'B'
       ? pickBestSplit(board, color, o.moves)
-      : pickBestSingle(board, color, o.moves, dice);
+      : pickBestSingle(board, color, o.moves);
     if (!pick) continue;
     scored.push({ type: o.type, pick, weight: o.weight });
   }
@@ -160,7 +155,8 @@ export const chooseOption = (board, color, dice) => {
   }
 
   // Pick the highest-scoring, with a small random factor.
-  scored.sort((a, b) => (b.pick.score * b.weight + Math.random() * 5) - (a.pick.score * a.weight + Math.random() * 5));
+  for (const s of scored) s.randomFactor = Math.random() * 5;
+  scored.sort((a, b) => (b.pick.score * b.weight + b.randomFactor) - (a.pick.score * a.weight + a.randomFactor));
   const chosen = scored[0];
 
   if (chosen.type === 'B') {

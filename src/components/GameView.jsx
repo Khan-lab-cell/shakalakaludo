@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
 import { useGameState } from '../hooks/useGameState.js';
@@ -12,7 +12,7 @@ import ChatBox from './ChatBox.jsx';
 import VoiceCall from './VoiceCall.jsx';
 import WinScreen from './WinScreen.jsx';
 import {
-  getValidOptions, isDoubleSix, HOME_PATH, FINAL_HOME, START, HOME_ENTRY, PATH,
+  isDoubleSix, HOME_PATH, FINAL_HOME, HOME_ENTRY, PATH,
 } from '../game/gameLogic.js';
 
 function GameView() {
@@ -30,6 +30,7 @@ function GameView() {
   const [validDestinations, setValidDestinations] = useState([]);
   const [lastDice, setLastDice] = useState(null);
   const [lastBoard, setLastBoard] = useState(null);
+  const [winDismissed, setWinDismissed] = useState(false);
 
   // Dice sound when a new dice result appears
   useEffect(() => {
@@ -58,7 +59,7 @@ function GameView() {
     setLastBoard(gs.board);
   }, [gs?.board, lastBoard]);
 
-  useEffect(() => { if (winner) playSound('win'); }, [winner]);
+  useEffect(() => { if (winner) { playSound('win'); setWinDismissed(false); } }, [winner]);
 
   // Compute valid destinations for selected piece
   useEffect(() => {
@@ -94,10 +95,24 @@ function GameView() {
     });
   }, []);
 
+  const rollTimeoutRef = useRef(null);
+
   const onRoll = async () => {
     setRolling(true);
-    setTimeout(async () => { await actions.rollDice(); setRolling(false); }, 700);
+    rollTimeoutRef.current = setTimeout(async () => {
+      try {
+        await actions.rollDice();
+      } catch (e) {
+        console.error('rollDice failed', e);
+      } finally {
+        setRolling(false);
+      }
+    }, 700);
   };
+
+  useEffect(() => {
+    return () => { if (rollTimeoutRef.current) clearTimeout(rollTimeoutRef.current); };
+  }, []);
 
   const onConfirmMove = (moves) => {
     playSound('move');
@@ -126,7 +141,7 @@ function GameView() {
 
   const goHome = async () => {
     if (you?.id) {
-      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) {}
+      try { await supabase.from('players').delete().eq('id', you.id); } catch (e) { console.error('goHome delete player', e); }
     }
     clearPlayer();
     navigate('/');
@@ -254,7 +269,7 @@ function GameView() {
         </div>
       )}
 
-      {winner && <WinScreen winner={winner} players={players} onClose={() => {}} />}
+      {winner && !winDismissed && <WinScreen winner={winner} players={players} onClose={() => setWinDismissed(true)} />}
     </div>
   );
 }

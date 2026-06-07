@@ -6,7 +6,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import {
-  BOARD_SIZE, PATH, HOME_PATH, HOME_BASE, HOME_SLOTS, FINAL_HOME, SAFE_SQUARES, START, COLORS, SEAT_COLORS,
+  BOARD_SIZE, PATH, HOME_PATH, HOME_BASE, SAFE_SQUARES, START, COLORS,
 } from '../game/boardPaths.js';
 import { pieceCoord } from '../game/gameLogic.js';
 import { Piece } from './Piece.jsx';
@@ -38,7 +38,6 @@ const isHomeColumnCell = (r, c) => {
   return null;
 };
 
-const isMainPathCell = (r, c) => PATH.some((p) => p.r === r && p.c === c);
 const mainPathIndex = (r, c) => PATH.findIndex((p) => p.r === r && p.c === c);
 
 // Build a lookup: (r,c) -> { type: 'main'|'homePath'|'base'|'center', color, index? }
@@ -116,7 +115,7 @@ export default function Board({ board, players, you, selectedPiece, onPieceClick
                 className={clsx(
                   'relative border border-slate-300/60 dark:border-slate-700/60',
                 )}
-                style={cellStyle(info, r, c)}
+                style={cellStyle(info)}
               >
                 {/* Star for safe squares */}
                 {info?.type === 'main' && SAFE_SQUARES.has(info.index) && (
@@ -161,7 +160,6 @@ export default function Board({ board, players, you, selectedPiece, onPieceClick
                 you={you}
                 selectedPiece={selectedPiece}
                 onPieceClick={onPieceClick}
-                validDestinations={validDestinations}
               />
             );
           })}
@@ -171,7 +169,7 @@ export default function Board({ board, players, you, selectedPiece, onPieceClick
   );
 }
 
-function cellStyle(info, r, c) {
+function cellStyle(info) {
   if (!info) return { backgroundColor: 'transparent' };
   if (info.type === 'base') {
     return {
@@ -202,7 +200,7 @@ function CenterLogo() {
   );
 }
 
-function PieceCluster({ r, c, cellPct, pieces, you, selectedPiece, onPieceClick, validDestinations }) {
+function PieceCluster({ r, c, cellPct, pieces, you, selectedPiece, onPieceClick }) {
   const left = (c + 0.5) * cellPct;
   const top = (r + 0.5) * cellPct;
   const stacked = pieces.length > 1;

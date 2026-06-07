@@ -1,6 +1,5 @@
 import { memo, useState } from 'react';
 import clsx from 'clsx';
-import { COLORS } from '../game/boardPaths.js';
 
 const COLOR_HEX = {
   red: '#ef4444',

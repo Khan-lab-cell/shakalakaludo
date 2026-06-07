@@ -18,8 +18,10 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
   const audioCtxRef = useRef(null);
   const channelRef = useRef(null);
   const onSpeakingChangeRef = useRef(onSpeakingChange);
-  onSpeakingChangeRef.current = onSpeakingChange;
   const speakingStateRef = useRef(new Map()); // playerId -> boolean
+
+  // Keep ref in sync with latest prop
+  useEffect(() => { onSpeakingChangeRef.current = onSpeakingChange; });
 
   // Request microphone
   useEffect(() => {
@@ -52,6 +54,22 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
         localStreamRef.current = null;
       }
     };
+  }, []);
+
+  const destroyPeer = useCallback((otherId) => {
+    const p = peersRef.current.get(otherId);
+    if (p) {
+      try { p.destroy(); } catch (e) { console.warn('peer destroy', e); }
+      peersRef.current.delete(otherId);
+    }
+    const audio = document.getElementById(`audio-${otherId}`);
+    if (audio) {
+      try { audio.srcObject = null; audio.remove(); } catch (e) { console.warn('audio remove', e); }
+    }
+    if (speakingStateRef.current.get(otherId)) {
+      speakingStateRef.current.set(otherId, false);
+      onSpeakingChangeRef.current?.(otherId, false);
+    }
   }, []);
 
   // Build a peer connection
@@ -89,7 +107,6 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
         analyser.fftSize = 512;
         src.connect(analyser);
         const buf = new Uint8Array(analyser.frequencyBinCount);
-        let last = 0;
         const tick = () => {
           if (!peersRef.current.has(otherPlayer.id)) return;
           analyser.getByteFrequencyData(buf);
@@ -101,7 +118,7 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
             speakingStateRef.current.set(otherPlayer.id, isSpeaking);
             onSpeakingChangeRef.current?.(otherPlayer.id, isSpeaking);
           }
-          last = requestAnimationFrame(tick);
+          requestAnimationFrame(tick);
         };
         tick();
       } catch (e) {
@@ -115,23 +132,7 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
     });
     peersRef.current.set(otherPlayer.id, peer);
     return peer;
-  }, [you]);
-
-  const destroyPeer = useCallback((otherId) => {
-    const p = peersRef.current.get(otherId);
-    if (p) {
-      try { p.destroy(); } catch (e) {}
-      peersRef.current.delete(otherId);
-    }
-    const audio = document.getElementById(`audio-${otherId}`);
-    if (audio) {
-      try { audio.srcObject = null; audio.remove(); } catch (e) {}
-    }
-    if (speakingStateRef.current.get(otherId)) {
-      speakingStateRef.current.set(otherId, false);
-      onSpeakingChangeRef.current?.(otherId, false);
-    }
-  }, []);
+  }, [you, destroyPeer]);
 
   // Wire up signaling channel
   useEffect(() => {
@@ -167,12 +168,12 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
     });
 
     return () => {
-      try { channel.send({ type: 'broadcast', event: 'bye', payload: { from: you.id } }); } catch (e) {}
+      try { channel.send({ type: 'broadcast', event: 'bye', payload: { from: you.id } }); } catch { /* ignore */ }
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, you?.id]);
+  }, [roomId, you?.id, players, buildPeer]);
 
   // When the players list changes (e.g. someone joins), greet them.
   useEffect(() => {
@@ -191,10 +192,11 @@ export default function VoiceCall({ roomId, you, players, onSpeakingChange }) {
 
   // Cleanup on unmount
   useEffect(() => {
+    const currentPeers = peersRef.current;
     return () => {
-      Array.from(peersRef.current.keys()).forEach(destroyPeer);
+      Array.from(currentPeers.keys()).forEach(destroyPeer);
       if (audioCtxRef.current) {
-        try { audioCtxRef.current.close(); } catch (e) {}
+        try { audioCtxRef.current.close(); } catch { /* ignore */ }
         audioCtxRef.current = null;
       }
     };

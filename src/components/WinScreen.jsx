@@ -19,6 +19,7 @@ export default function WinScreen({ winner, players, onClose }) {
                    ['#eab308','#fff','#ef4444'];
     const duration = 3000;
     const end = Date.now() + duration;
+    let rafId;
     (function frame() {
       confetti({
         particleCount: 4,
@@ -34,8 +35,9 @@ export default function WinScreen({ winner, players, onClose }) {
         origin: { x: 1 },
         colors,
       });
-      if (Date.now() < end) requestAnimationFrame(frame);
+      if (Date.now() < end) rafId = requestAnimationFrame(frame);
     })();
+    return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [winner]);
 
   if (!winner) return null;
